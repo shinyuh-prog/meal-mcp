@@ -20,6 +20,11 @@ const STEPS = {
     tool: 'generate_meal_plan',
     args: (q) => ({ goal: 'maintain', target_calories: 2000, dietary_preference: q.diet }),
   },
+  offproduct: {
+    tool: 'off_get_product',
+    args: () => ({ barcode: '3017620422003', fields: ['product_name', 'brands', 'quantity', 'nutriscore_grade', 'allergens_tags', 'nutriments'] }),
+  },
+  offsearch: { tool: 'off_search_products', args: (q) => ({ query: q.query, page_size: 3 }) },
   tdee: {
     tool: 'calculate_tdee',
     args: (q) => ({ age: 34, gender: 'female', height_cm: 165, weight_kg: 60, activity_level: 'moderate', goal: q.goal }),
