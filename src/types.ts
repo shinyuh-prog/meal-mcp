@@ -79,7 +79,7 @@ export interface MenuItem {
   timeIsEstimate?: boolean;
   recipeServings?: number | null;
   servingsIsEstimate?: boolean;
-  source?: 'spoonacular' | 'themealdb' | 'demo';
+  source?: 'spoonacular' | 'themealdb' | 'gemini' | 'demo';
   sourceUrl?: string | null;
   cuisine: string;
   image: string;

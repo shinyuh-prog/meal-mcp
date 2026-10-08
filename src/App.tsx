@@ -263,7 +263,7 @@ export default function App() {
       };
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000);
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
 
       const response = await fetch('/api/meal-plan', {
         method: 'POST',
@@ -316,7 +316,14 @@ export default function App() {
 
         setCategories(newConsolidated);
 
-        if (data.recipeSource === 'themealdb') {
+        if (data.recipeSource === 'gemini') {
+          setIsDemoMode(false);
+          setToastMessage(
+            swapDay
+              ? `Replaced ${swapDay}'s dinner with an AI-generated recipe (no recipe source covers these cuisines right now).`
+              : 'Weekly menu written by Gemini — no recipe source covers these cuisines right now. Dinners are AI-generated.'
+          );
+        } else if (data.recipeSource === 'themealdb') {
           setIsDemoMode(Boolean(data.isDemo));
           setToastMessage(
             swapDay
@@ -346,7 +353,7 @@ export default function App() {
       }
     } catch (err: any) {
       console.error('Menu generation error:', err);
-      const errMsg = err.name === 'AbortError' ? 'Request timed out after 20s' : (err.message || 'Service unavailable');
+      const errMsg = err.name === 'AbortError' ? 'Request timed out after 30s' : (err.message || 'Service unavailable');
       setGenerationError(errMsg);
       setToastMessage(`Notice: ${errMsg}. Current menu kept safely.`);
     } finally {

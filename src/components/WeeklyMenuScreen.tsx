@@ -267,6 +267,13 @@ export function WeeklyMenuScreen({
                   {selectedMeal.description}
                 </p>
 
+                {selectedMeal.source === 'gemini' && (
+                  <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 -mt-3 mb-6">
+                    AI-generated recipe (Gemini). It does not come from a recipe database and has not been tested — check
+                    the ingredients and method before cooking.
+                  </p>
+                )}
+
                 {selectedMeal.source === 'themealdb' && (
                   <p className="text-[11px] text-stone-500 -mt-4 mb-6">
                     Recipe data from{' '}
