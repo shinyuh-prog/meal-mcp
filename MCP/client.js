@@ -174,7 +174,7 @@ export class McpSession {
       if (!response.ok) {
         const errorBody = await response.text().catch(() => '');
         const detail = (sanitizeErrorMessage(
-          `${response.headers.get('www-authenticate') || ''} ${errorBody}`.replace(/s+/g, ' ').trim()
+          `${response.headers.get('www-authenticate') || ''} ${errorBody}`.replace(/\s+/g, ' ').trim()
         ) || '').slice(0, 400);
         if (response.status === 401 || response.status === 403) {
           throw new McpError(
