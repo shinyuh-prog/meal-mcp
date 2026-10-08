@@ -175,6 +175,67 @@ export function ApiHealthModal({
                 : health?.providers.gemini.error || 'Click "Check APIs" below to verify status.'}
             </p>
           </div>
+
+          {/* NutriBalance MCP */}
+          <div className="p-4 bg-white border border-stone-200 rounded-xl shadow-2xs">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Server className="w-4 h-4 text-stone-600" />
+                <span className="text-sm font-bold text-stone-800">
+                  NutriBalance MCP (optional)
+                </span>
+              </div>
+              {health?.providers.nutribalance ? (
+                renderStatusBadge(
+                  health.providers.nutribalance.status,
+                  health.providers.nutribalance.responseTimeMs
+                )
+              ) : (
+                <span className="text-xs text-stone-400">Not checked</span>
+              )}
+            </div>
+
+            {health?.providers.nutribalance && (
+              <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                {(
+                  [
+                    ['Endpoint set', health.providers.nutribalance.endpointConfigured],
+                    ['Key set', health.providers.nutribalance.keyConfigured],
+                    ['Connectivity', health.providers.nutribalance.connectivityVerified],
+                    ['Auth', health.providers.nutribalance.authVerified],
+                    ['Tool discovery', health.providers.nutribalance.mappedToolAvailable],
+                  ] as [string, boolean][]
+                ).map(([label, ok]) => (
+                  <span
+                    key={label}
+                    className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${
+                      ok
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : 'bg-rose-50 text-rose-700 border-rose-200'
+                    }`}
+                  >
+                    {label}: {ok ? '✓' : '✕'}
+                  </span>
+                ))}
+                <span className="px-2 py-0.5 rounded text-[10px] font-semibold border bg-stone-100 text-stone-600 border-stone-200">
+                  Tool execution: not tested here
+                </span>
+                {health.providers.nutribalance.upstreamHttpStatus && (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-stone-100 text-stone-700 border border-stone-200">
+                    HTTP {health.providers.nutribalance.upstreamHttpStatus}
+                  </span>
+                )}
+              </div>
+            )}
+
+            <p className="text-xs text-stone-500">
+              {health?.providers.nutribalance
+                ? health.providers.nutribalance.error ||
+                  health.providers.nutribalance.message ||
+                  'Not configured. Manual calorie entry still works.'
+                : 'Click "Check APIs" below to verify status. Manual calorie entry works without it.'}
+            </p>
+          </div>
         </div>
 
         {/* Overall Status Banner */}

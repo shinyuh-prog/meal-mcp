@@ -95,12 +95,51 @@ export interface ApiProviderHealth {
   error: string | null;
 }
 
+export interface McpProviderHealth {
+  status: 'ok' | 'error' | 'not_configured';
+  endpointConfigured: boolean;
+  keyConfigured: boolean;
+  upstreamHttpStatus: number | null;
+  responseTimeMs: number | null;
+  connectivityVerified: boolean;
+  authVerified: boolean;
+  discoveryVerified: boolean;
+  mappedTool: string;
+  mappedToolAvailable: boolean;
+  operationVerified: boolean;
+  message: string | null;
+  error: string | null;
+}
+
 export interface ApiHealthResponse {
   status: 'healthy' | 'unhealthy';
   timestamp: string;
   providers: {
     spoonacular: ApiProviderHealth;
     gemini: ApiProviderHealth;
+    nutribalance?: McpProviderHealth | null;
+  };
+}
+
+// Inputs for the mapped NutriBalance tool (calculate_tdee)
+export interface NutritionProfile {
+  age: number;
+  gender: 'male' | 'female';
+  height_cm: number;
+  weight_kg: number;
+  activity_level: 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active';
+  goal: 'lose' | 'maintain' | 'gain';
+}
+
+export interface NutritionTargetResult {
+  source: 'nutribalance-mcp' | 'demo';
+  tool: string | null;
+  dailyCalories: number;
+  calorieBasis: 'target' | 'tdee' | null;
+  macros: {
+    proteinGrams: number | null;
+    carbsGrams: number | null;
+    fatGrams: number | null;
   };
 }
 

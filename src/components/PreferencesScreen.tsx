@@ -7,6 +7,7 @@ import {
 } from '../types';
 import { getDailyCalorieTarget } from '../data/sampleCalories';
 import { ImgWithFallback } from './ImgWithFallback';
+import { NutritionTargetModal } from './NutritionTargetModal';
 import {
   Users,
   UtensilsCrossed,
@@ -67,6 +68,13 @@ export function PreferencesScreen({
   const [newPantryName, setNewPantryName] = useState('');
   const [newPantryLoc, setNewPantryLoc] = useState('');
   const [newPantryQty, setNewPantryQty] = useState('');
+
+  // Member whose suggested calorie target is being calculated (adults only)
+  const [targetMemberId, setTargetMemberId] = useState<string | null>(null);
+  const targetMember = prefs.members.find((m) => m.id === targetMemberId) || null;
+
+  const isChildMember = (m: HouseholdMember) =>
+    m.roleDescription.startsWith('Child') || m.name.includes('Leo');
 
   // Formula calculation based on members
   const memberMultipliers = prefs.members.map((m) => {
@@ -407,6 +415,17 @@ export function PreferencesScreen({
                         className="w-20 px-2 py-1 text-xs font-mono text-stone-800 bg-white border border-stone-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#233F33]"
                       />
                     </label>
+
+                    {!isChildMember(member) && (
+                      <button
+                        type="button"
+                        onClick={() => setTargetMemberId(member.id)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-[#244E3B] bg-[#EEF4F0] border border-[#D5E5DB] rounded-lg hover:bg-[#E2EDE6] transition-colors"
+                      >
+                        <Calculator className="w-3 h-3" />
+                        Calculate Suggested Target
+                      </button>
+                    )}
 
                     {/* Appetite Selector Buttons */}
                     <div className="flex items-center gap-1 bg-stone-200/60 p-1 rounded-lg">
@@ -1041,6 +1060,14 @@ export function PreferencesScreen({
           </div>
         </div>
       </div>
+
+      <NutritionTargetModal
+        key={targetMember?.id || 'none'}
+        member={targetMember}
+        currentTarget={targetMember ? getDailyCalorieTarget(targetMember) : 0}
+        onClose={() => setTargetMemberId(null)}
+        onUseTarget={(memberId, kcal) => handleMemberCalorieTarget(memberId, String(kcal))}
+      />
 
       {/* Sticky Bottom Footer Bar */}
       <div className="fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-md border-t border-stone-200 shadow-lg px-4 sm:px-6 py-3 no-print">

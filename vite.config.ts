@@ -23,6 +23,8 @@ function apiServerPlugin(): Plugin {
               handlerModule = await import('./api/recipes.js');
             } else if (pathname === '/api/meal-plan' || pathname === '/api/meal-plan.js') {
               handlerModule = await import('./api/meal-plan.js');
+            } else if (pathname === '/api/nutrition-targets' || pathname === '/api/nutrition-targets.js') {
+              handlerModule = await import('./api/nutrition-targets.js');
             }
 
             if (handlerModule && handlerModule.default) {

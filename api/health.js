@@ -1,6 +1,7 @@
 /**
  * /api/health.js
- * Comprehensive diagnostic health check for Gemini and Spoonacular APIs.
+ * Comprehensive diagnostic health check for Gemini and Spoonacular APIs,
+ * plus a lightweight NutriBalance MCP connection and tool-discovery check.
  * Separately inspects authentication, model discovery, generation readiness,
  * and upstream HTTP status codes.
  * Compatible with Vercel serverless functions and Express/Node.
@@ -8,6 +9,7 @@
 
 import { GoogleGenAI } from '@google/genai';
 import { fetchWithTimeout, sanitizeErrorMessage, getGeminiModel } from '../lib/api-client.js';
+import { checkNutriBalanceHealth } from '../MCP/nutribalance.js';
 
 export default async function handler(req, res) {
   // Ensure res has standard helper methods if running in pure Node http
@@ -25,6 +27,8 @@ export default async function handler(req, res) {
     };
   }
 
+  res.setHeader('Cache-Control', 'no-store');
+
   const configuredModel = getGeminiModel();
 
   const results = {
@@ -33,12 +37,14 @@ export default async function handler(req, res) {
     providers: {
       spoonacular: {
         status: 'not_configured',
+        keyConfigured: Boolean((process.env.SPOONACULAR_API_KEY || '').trim()),
         upstreamHttpStatus: null,
         responseTimeMs: null,
         error: null,
       },
       gemini: {
         status: 'not_configured',
+        keyConfigured: Boolean((process.env.GEMINI_API_KEY || '').trim()),
         upstreamHttpStatus: null,
         responseTimeMs: null,
         authVerified: false,
@@ -46,6 +52,7 @@ export default async function handler(req, res) {
         error: null,
         model: configuredModel,
       },
+      nutribalance: null,
     },
   };
 
@@ -148,7 +155,11 @@ export default async function handler(req, res) {
     }
   }
 
-  // 3. Determine Overall System Status
+  // 3. Check NutriBalance MCP (initialize + tool discovery only; the nutrition tool is never run here)
+  results.providers.nutribalance = await checkNutriBalanceHealth();
+
+  // 4. Determine Overall System Status
+  // NutriBalance is optional (manual calorie entry still works), so it does not change the overall status.
   const isSpoonOk = results.providers.spoonacular.status === 'ok';
   const isGeminiOk = results.providers.gemini.status === 'ok';
 
