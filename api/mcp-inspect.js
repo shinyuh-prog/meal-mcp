@@ -9,6 +9,7 @@ import { McpSession, McpError, requireMcpConfig } from '../MCP/client.js';
 
 const STEPS = {
   tools: null,
+  status: { tool: 'get_toolbox_status', args: () => ({}) },
   cuisines: { tool: 'cuisines_explore', args: () => ({ minRecipes: 1 }) },
   list: { tool: 'recipes_list_by_cuisine', args: (q) => ({ cuisine: q.cuisine, limit: 3 }) },
   search: { tool: 'recipes_search', args: (q) => ({ query: q.query, mealType: 'dinner', limit: 3 }) },
@@ -66,6 +67,7 @@ export default async function handler(req, res) {
     if (step === 'tools') {
       return send(200, {
         tools: tools.map((t) => ({ name: t.name, hasOutputSchema: Boolean(t.outputSchema) })),
+        builtIn: tools.filter((t) => !t.name.includes('.')).map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema })),
       });
     }
 
@@ -76,6 +78,18 @@ export default async function handler(req, res) {
     }
 
     const result = await session.callTool(matches[0].name, spec.args(q));
+
+    // Toolbox status carries credential-bearing setup URLs: return server names and states only.
+    if (step === 'status') {
+      let servers = null;
+      try {
+        const parsed = JSON.parse(result.content[0].text);
+        servers = parsed.map((entry) => ({ server: entry.server, name: entry.name, state: entry.state }));
+      } catch (e) {
+        servers = null;
+      }
+      return send(200, { servers, parsed: servers !== null });
+    }
     return send(200, { tool: matches[0].name, outputSchema: matches[0].outputSchema || null, result });
   } catch (err) {
     if (err instanceof McpError) {
