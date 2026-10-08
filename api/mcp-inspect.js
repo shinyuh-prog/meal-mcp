@@ -9,7 +9,6 @@ import { McpSession, McpError, requireMcpConfig } from '../MCP/client.js';
 
 const STEPS = {
   tools: null,
-  status: { tool: 'get_toolbox_status', args: () => ({}) },
   cuisines: { tool: 'cuisines_explore', args: () => ({ minRecipes: 1 }) },
   list: { tool: 'recipes_list_by_cuisine', args: (q) => ({ cuisine: q.cuisine, limit: 3 }) },
   search: { tool: 'recipes_search', args: (q) => ({ query: q.query, mealType: 'dinner', limit: 3 }) },
