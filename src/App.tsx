@@ -281,6 +281,11 @@ export default function App() {
 
       const data = await response.json();
 
+      // A failed provider call must not replace the current plan with fallback recipes
+      if (data.success === false) {
+        throw new Error(data.error || 'Meal plan service failed');
+      }
+
       if (data.menu && Array.isArray(data.menu)) {
         // Preserve lock flags
         const nextMenu: MenuItem[] = data.menu.map((m: MenuItem) => {
@@ -328,6 +333,7 @@ export default function App() {
         }
 
         setIsGenerateOpen(false);
+        setActiveTab('menu');
       } else {
         throw new Error(data.error || 'Failed to assemble weekly menu');
       }
