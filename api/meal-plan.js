@@ -244,7 +244,7 @@ export default async function handler(req, res) {
         cuisines: c.cuisines,
         keyIngredients: (c.extendedIngredients || []).slice(0, 5).map((i) => i.name),
         // Only sent when the source has no cooking time, so Gemini can estimate it
-        method: c.readyInMinutes === null ? String(c.instructions || '').slice(0, 500) : undefined,
+        method: c.readyInMinutes === null ? String(c.instructions || '').slice(0, 300) : undefined,
       })),
     };
 
@@ -283,7 +283,7 @@ RULES:
     try {
       const response = await ai.models.generateContent({
         model: targetModel,
-        contents: `Arrange the weekly menu for this household using the available recipes and constraints:\n${JSON.stringify(promptPayload, null, 2)}`,
+        contents: `Arrange the weekly menu for this household using the available recipes and constraints:\n${JSON.stringify(promptPayload)}`,
         config: {
           systemInstruction,
           responseMimeType: 'application/json',
@@ -296,7 +296,7 @@ RULES:
       modelUsed = FALLBACK_GEMINI_MODEL;
       const fallbackResponse = await ai.models.generateContent({
         model: FALLBACK_GEMINI_MODEL,
-        contents: `Arrange the weekly menu for this household using the available recipes and constraints:\n${JSON.stringify(promptPayload, null, 2)}`,
+        contents: `Arrange the weekly menu for this household using the available recipes and constraints:\n${JSON.stringify(promptPayload)}`,
         config: {
           systemInstruction,
           responseMimeType: 'application/json',
@@ -474,7 +474,10 @@ function buildExclusionKeywords(restrictions, dislikes) {
   return [...keywords];
 }
 
-const GENERATION_TIMEOUT_MS = 18000;
+const GENERATION_TIMEOUT_MS = 22000;
+const GENERATION_BATCH_SIZE = 3;
+// Each parallel batch gets a different theme so the batches do not return the same dishes
+const GENERATION_FOCUS = ['poultry or meat mains', 'seafood, tofu or egg dishes', 'noodle, rice or soup dishes'];
 
 /**
  * Third-tier recipe source: Gemini writes the dinners when neither Spoonacular
@@ -526,13 +529,12 @@ async function generateGeminiRecipes(ai, { cuisines, dietaryRestrictions, dislik
     systemInstruction: `You write practical home-cooked family dinner recipes.
 Return exactly "count" different dinners. Spread them across the requested "cuisines", giving the earlier-listed cuisines more dinners.
 Strictly exclude anything in "dietaryRestrictions" and "dislikedIngredients". Keep total time within "maxCookingMinutes". Do not repeat any of "avoidTitles".
+Where the restrictions allow, make the dinners fit the "focus" theme. Use at most 9 ingredients and keep "method" to 3 sentences.
 Give ingredient quantities in grams or millilitres where sensible, and estimate nutrition for one serving.`,
     responseMimeType: 'application/json',
     responseSchema,
   };
-  const contents = `Write the dinners for this household:\n${JSON.stringify(request)}`;
-
-  const callModel = async (model) => {
+  const callModel = async (model, contents) => {
     let timer = null;
     try {
       const timeout = new Promise((_, reject) => {
@@ -549,21 +551,46 @@ Give ingredient quantities in grams or millilitres where sensible, and estimate 
     }
   };
 
-  let model = getGeminiModel();
-  let parsed;
-  try {
-    parsed = await callModel(model);
-  } catch (primaryErr) {
-    if (primaryErr.status === 504) throw primaryErr;
-    console.warn(`Primary model ${model} failed for recipe generation, trying ${FALLBACK_GEMINI_MODEL}:`, primaryErr.message);
-    model = FALLBACK_GEMINI_MODEL;
-    parsed = await callModel(model);
+  const batches = [];
+  for (let left = count, i = 0; left > 0; i++) {
+    const size = Math.min(GENERATION_BATCH_SIZE, left);
+    batches.push({ count: size, focus: GENERATION_FOCUS[i % GENERATION_FOCUS.length] });
+    left -= size;
+  }
+
+  const model = getGeminiModel();
+  const runBatch = async (batch) => {
+    const contents = `Write the dinners for this household:\n${JSON.stringify({ ...request, ...batch })}`;
+    try {
+      return await callModel(model, contents);
+    } catch (primaryErr) {
+      if (primaryErr.status === 504) throw primaryErr;
+      console.warn(`Primary model ${model} failed for recipe generation, trying ${FALLBACK_GEMINI_MODEL}:`, primaryErr.message);
+      return callModel(FALLBACK_GEMINI_MODEL, contents);
+    }
+  };
+
+  // Batches run in parallel; the menu is built from whichever batches succeed
+  const settled = await Promise.allSettled(batches.map(runBatch));
+  const parsed = settled
+    .filter((outcome) => outcome.status === 'fulfilled' && Array.isArray(outcome.value))
+    .flatMap((outcome) => outcome.value);
+  if (parsed.length === 0) {
+    const failed = settled.find((outcome) => outcome.status === 'rejected');
+    throw failed ? failed.reason : new Error('no usable dinners were returned');
   }
 
   const inRange = (n, min, max) => Number.isInteger(n) && n >= min && n <= max;
   const stamp = Date.now();
-  const recipes = (Array.isArray(parsed) ? parsed : [])
+  const seenTitles = new Set();
+  const recipes = parsed
     .filter((r) => r && typeof r.title === 'string' && r.title.trim() && Array.isArray(r.ingredients) && r.ingredients.length > 0)
+    .filter((r) => {
+      const key = r.title.trim().toLowerCase();
+      if (seenTitles.has(key)) return false;
+      seenTitles.add(key);
+      return true;
+    })
     .map((r, index) => {
       const servings = inRange(r.servings, 1, 12) ? r.servings : null;
       const macro = (n) => (inRange(n, 0, 300) ? n : null);
@@ -605,7 +632,8 @@ Give ingredient quantities in grams or millilitres where sensible, and estimate 
 
 // Quantities given by volume that lib/units.js leaves unconverted (i.e. solids)
 const VOLUME_QTY = /^\s*[\d/. ]+\s*(cups?|tbsps?|tbs|tblsp|tablespoons?|tsps?|teaspoons?)\b/i;
-const ESTIMATE_TIMEOUT_MS = 9000;
+const ESTIMATE_TIMEOUT_MS = 14000;
+const ESTIMATE_BATCH_SIZE = 3;
 
 /**
  * Ask Gemini to estimate per-serving nutrition for the newly planned dinners and
@@ -660,10 +688,14 @@ async function applyGeminiEstimates(ai, model, menu, freshDays) {
     const timeout = new Promise((_, reject) => {
       timer = setTimeout(() => reject(new Error('estimate timed out')), ESTIMATE_TIMEOUT_MS);
     });
-    const response = await Promise.race([
+    const batches = [];
+    for (let i = 0; i < payload.length; i += ESTIMATE_BATCH_SIZE) {
+      batches.push(payload.slice(i, i + ESTIMATE_BATCH_SIZE));
+    }
+    const estimateBatch = (batch) =>
       ai.models.generateContent({
         model,
-        contents: `Estimate for each dinner:\n${JSON.stringify(payload)}`,
+        contents: `Estimate for each dinner:\n${JSON.stringify(batch)}`,
         config: {
           systemInstruction: `You estimate nutrition for home-cooked dinners.
 For each dinner, estimate caloriesPerServing, proteinGrams, carbsGrams and fatGrams for ONE serving, using the listed ingredients and the given number of servings.
@@ -673,12 +705,21 @@ Use null when you cannot make a reasonable estimate. Return one object per dinne
           responseMimeType: 'application/json',
           responseSchema,
         },
-      }),
-      timeout,
-    ]);
+      });
 
-    const parsed = JSON.parse(response.text ? response.text.trim() : '[]');
-    if (!Array.isArray(parsed)) return false;
+    // Batches run in parallel; a failed batch only loses the estimates for its own dinners
+    const settled = await Promise.race([Promise.allSettled(batches.map(estimateBatch)), timeout]);
+    const parsed = [];
+    for (const outcome of settled) {
+      if (outcome.status !== 'fulfilled') continue;
+      try {
+        const rows = JSON.parse(outcome.value.text ? outcome.value.text.trim() : '[]');
+        if (Array.isArray(rows)) parsed.push(...rows);
+      } catch (e) {
+        // ignore a malformed batch
+      }
+    }
+    if (parsed.length === 0) return false;
 
     const inRange = (n, min, max) => Number.isInteger(n) && n >= min && n <= max;
     let applied = false;

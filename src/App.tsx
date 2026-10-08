@@ -263,7 +263,7 @@ export default function App() {
       };
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const timeoutId = setTimeout(() => controller.abort(), 45000);
 
       const response = await fetch('/api/meal-plan', {
         method: 'POST',
@@ -353,7 +353,7 @@ export default function App() {
       }
     } catch (err: any) {
       console.error('Menu generation error:', err);
-      const errMsg = err.name === 'AbortError' ? 'Request timed out after 30s' : (err.message || 'Service unavailable');
+      const errMsg = err.name === 'AbortError' ? 'Request timed out after 45s' : (err.message || 'Service unavailable');
       setGenerationError(errMsg);
       setToastMessage(`Notice: ${errMsg}. Current menu kept safely.`);
     } finally {
