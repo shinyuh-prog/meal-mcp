@@ -15,6 +15,10 @@ const STEPS = {
   quick: { tool: 'recipes_get_quick', args: () => ({ maxMinutes: 45, mealType: 'dinner', limit: 3 }) },
   get: { tool: 'recipes_get', args: (q) => ({ slugOrId: q.slug }) },
   nutrition: { tool: 'recipes_get_nutrition', args: (q) => ({ recipeSlug: q.slug }) },
+  mealplan: {
+    tool: 'generate_meal_plan',
+    args: (q) => ({ goal: 'maintain', target_calories: 2000, dietary_preference: q.diet }),
+  },
   tdee: {
     tool: 'calculate_tdee',
     args: (q) => ({ age: 34, gender: 'female', height_cm: 165, weight_kg: 60, activity_level: 'moderate', goal: q.goal }),
@@ -46,6 +50,7 @@ export default async function handler(req, res) {
     cuisine: params.get('cuisine') || 'Chinese',
     query: params.get('query') || 'chicken',
     slug: params.get('slug') || '',
+    diet: ['standard', 'vegetarian', 'vegan', 'keto', 'high_protein'].includes(params.get('diet')) ? params.get('diet') : 'standard',
     goal: ['lose', 'maintain', 'gain'].includes(params.get('goal')) ? params.get('goal') : 'gain',
   };
   if (![q.cuisine, q.query].every((v) => SAFE.test(v)) || (q.slug && !SAFE.test(q.slug))) {
