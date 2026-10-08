@@ -76,6 +76,9 @@ export interface MenuItem {
   subName: string;
   description: string;
   prepTimeMinutes: number | null;
+  timeIsEstimate?: boolean;
+  recipeServings?: number | null;
+  servingsIsEstimate?: boolean;
   source?: 'spoonacular' | 'themealdb' | 'demo';
   sourceUrl?: string | null;
   cuisine: string;
@@ -83,7 +86,7 @@ export interface MenuItem {
   tags: string[];
   servings: number;
   isLocked?: boolean;
-  ingredients: { name: string; qty: string; status: 'in-pantry' | 'buy' }[];
+  ingredients: { name: string; qty: string; originalQty?: string; status: 'in-pantry' | 'buy' }[];
 }
 
 export interface ApiProviderHealth {

@@ -192,6 +192,8 @@ export default async function handler(req, res) {
         readyInMinutes: c.readyInMinutes,
         cuisines: c.cuisines,
         keyIngredients: (c.extendedIngredients || []).slice(0, 5).map((i) => i.name),
+        // Only sent when the source has no cooking time, so Gemini can estimate it
+        method: c.readyInMinutes === null ? String(c.instructions || '').slice(0, 500) : undefined,
       })),
     };
 
@@ -202,7 +204,8 @@ RULES:
 2. If a day is in "lockedDays", retain the recipe from "existingMenuDays" for that day.
 3. Ensure cooking times do not exceed maxCookingMinutes.
 4. Strictly respect all dietary restrictions and disliked ingredients.
-5. Return a JSON array of 7 objects (one for each day Monday through Sunday).`;
+5. Return a JSON array of 7 objects (one for each day Monday through Sunday).
+6. For a chosen recipe whose readyInMinutes is null, estimate estimatedMinutes (total prep + cooking) and estimatedServings from its "method" and ingredients, and prefer recipes you estimate fit within maxCookingMinutes. For every other recipe leave both null.`;
 
     const schemaConfig = {
       type: Type.ARRAY,
@@ -213,6 +216,8 @@ RULES:
           recipeId: { type: Type.STRING, description: 'Recipe ID matching availableRecipes' },
           subName: { type: Type.STRING, description: 'Short nutritional tagline for the family' },
           reason: { type: Type.STRING, description: 'Brief note explaining why this fits household profile' },
+          estimatedMinutes: { type: Type.INTEGER, nullable: true, description: 'Estimated total minutes, only when readyInMinutes is null' },
+          estimatedServings: { type: Type.INTEGER, nullable: true, description: 'Estimated servings, only when readyInMinutes is null' },
         },
         required: ['day', 'recipeId', 'subName', 'reason'],
       },
@@ -277,7 +282,7 @@ RULES:
         selectedRecipe = activePool[idx % activePool.length];
       }
 
-      return formatMenuItemFromRecipe(selectedRecipe, dayName, assignment?.subName);
+      return formatMenuItemFromRecipe(selectedRecipe, dayName, assignment?.subName, assignment);
     });
 
     return res.status(200).json({
@@ -320,13 +325,20 @@ RULES:
   }
 }
 
-function formatMenuItemFromRecipe(recipe, day, subName) {
+function formatMenuItemFromRecipe(recipe, day, subName, assignment = null) {
+  // Gemini estimates apply only to the recipe Gemini actually chose, and only where the source has no value
+  const est = assignment && String(assignment.recipeId) === String(recipe.id) ? assignment : null;
+  const inRange = (n, min, max) => Number.isInteger(n) && n >= min && n <= max;
+  const estimatedMinutes = est && inRange(est.estimatedMinutes, 5, 240) ? est.estimatedMinutes : null;
+  const estimatedServings = est && inRange(est.estimatedServings, 1, 12) ? est.estimatedServings : null;
+
   // TheMealDB supplies a free-text measure (e.g. "1/2 cup") and no cooking time
   const ingredients = (recipe.extendedIngredients || []).map((ing) => ({
     name: ing.name || ing.original || 'Ingredient',
     qty: ing.measure !== undefined
       ? (ing.measure || 'Quantity unavailable')
       : `${ing.amount || 1}${ing.unit ? ' ' + ing.unit : ''}`,
+    originalQty: ing.originalMeasure || undefined,
     status: (ing.name || '').match(/rice|oil|salt|soy|cornstarch/i) ? 'in-pantry' : 'buy',
   }));
   const timeKnown = recipe.readyInMinutes !== null;
@@ -339,7 +351,10 @@ function formatMenuItemFromRecipe(recipe, day, subName) {
     mealName: recipe.title,
     subName: subName || (timeKnown ? `Prep time: ${recipe.readyInMinutes}m • Fresh Family Style` : 'Fresh Family Style'),
     description: recipe.summary || recipe.instructions || 'Nourishing family style meal prepared with fresh seasonal ingredients.',
-    prepTimeMinutes: timeKnown ? (recipe.readyInMinutes || 30) : null,
+    prepTimeMinutes: timeKnown ? (recipe.readyInMinutes || 30) : estimatedMinutes,
+    timeIsEstimate: !timeKnown && estimatedMinutes !== null,
+    recipeServings: recipe.servings ?? estimatedServings,
+    servingsIsEstimate: (recipe.servings === null || recipe.servings === undefined) && estimatedServings !== null,
     source,
     sourceUrl: recipe.sourceUrl || null,
     cuisine: (recipe.cuisines?.[0] || 'Asian') + ' Home Cooking',

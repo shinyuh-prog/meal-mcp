@@ -132,7 +132,7 @@ export function WeeklyMenuScreen({
                 <div className="flex items-center justify-between text-xs font-semibold text-stone-500 mb-1">
                   <span>{item.day.slice(0, 3)}</span>
                   <span className="text-[10px] text-stone-400 font-mono">
-                    {item.prepTimeMinutes !== null ? `${item.prepTimeMinutes}m` : '—'}
+                    {item.prepTimeMinutes !== null ? `${item.timeIsEstimate ? '~' : ''}${item.prepTimeMinutes}m` : '—'}
                   </span>
                 </div>
                 <p
@@ -209,7 +209,11 @@ export function WeeklyMenuScreen({
                 <div className="flex items-center gap-3 text-xs text-stone-500 mb-2 font-mono flex-wrap">
                   <span className="flex items-center gap-1 font-semibold text-stone-700">
                     <Clock className="w-3.5 h-3.5 text-stone-500" />
-                    {selectedMeal.prepTimeMinutes !== null ? `${selectedMeal.prepTimeMinutes} mins prep` : 'Cooking time unavailable'}
+                    {selectedMeal.prepTimeMinutes === null
+                      ? 'Cooking time unavailable'
+                      : selectedMeal.timeIsEstimate
+                      ? `~${selectedMeal.prepTimeMinutes} mins (AI estimate)`
+                      : `${selectedMeal.prepTimeMinutes} mins prep`}
                   </span>
                   <span>•</span>
                   <span className="flex items-center gap-1 font-semibold text-stone-700">
@@ -217,7 +221,24 @@ export function WeeklyMenuScreen({
                     Yield: {totalMultiplier.toFixed(2)}x portions
                   </span>
                   <span>•</span>
-                  {selectedMeal.prepTimeMinutes !== null ? (
+                  {selectedMeal.servingsIsEstimate && selectedMeal.recipeServings ? (
+                    <>
+                      <span className="font-semibold text-stone-700">
+                        Recipe serves ~{selectedMeal.recipeServings} (AI estimate)
+                      </span>
+                      <span>•</span>
+                    </>
+                  ) : null}
+                  {selectedMeal.prepTimeMinutes !== null && selectedMeal.timeIsEstimate ? (
+                    <span
+                      className={`font-semibold ${
+                        selectedMeal.prepTimeMinutes <= preferences.maxCookingTime ? 'text-emerald-700' : 'text-amber-700'
+                      }`}
+                    >
+                      Estimated {selectedMeal.prepTimeMinutes <= preferences.maxCookingTime ? 'under' : 'over'}{' '}
+                      {preferences.maxCookingTime}m target
+                    </span>
+                  ) : selectedMeal.prepTimeMinutes !== null ? (
                     <span className="text-emerald-700 font-semibold">
                       Under {preferences.maxCookingTime}m target
                     </span>
@@ -326,7 +347,10 @@ export function WeeklyMenuScreen({
                           {ing.name}
                         </span>
                         <div className="flex items-center gap-2">
-                          <span className="font-mono text-stone-600 font-medium">
+                          <span
+                            className="font-mono text-stone-600 font-medium"
+                            title={ing.originalQty ? `Recipe states: ${ing.originalQty}` : undefined}
+                          >
                             {ing.qty}
                           </span>
                           {ing.status === 'in-pantry' ? (
@@ -436,7 +460,7 @@ export function WeeklyMenuScreen({
                     {item.mealName}
                   </h4>
                   <p className="text-xs text-stone-500 mt-0.5">
-                    {item.cuisine}{item.prepTimeMinutes !== null ? ` • ${item.prepTimeMinutes} mins` : ''}
+                    {item.cuisine}{item.prepTimeMinutes !== null ? ` • ${item.timeIsEstimate ? '~' : ''}${item.prepTimeMinutes} mins` : ''}
                   </p>
                 </div>
               </div>
