@@ -316,7 +316,14 @@ export default function App() {
 
         setCategories(newConsolidated);
 
-        if (data.isDemo) {
+        if (data.recipeSource === 'themealdb') {
+          setIsDemoMode(Boolean(data.isDemo));
+          setToastMessage(
+            swapDay
+              ? `Replaced ${swapDay}'s dinner with a TheMealDB recipe (Spoonacular unavailable).`
+              : 'Weekly menu built from TheMealDB recipes — Spoonacular is unavailable right now.'
+          );
+        } else if (data.isDemo) {
           setIsDemoMode(true);
           setToastMessage(
             swapDay

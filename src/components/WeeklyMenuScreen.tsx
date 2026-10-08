@@ -132,7 +132,7 @@ export function WeeklyMenuScreen({
                 <div className="flex items-center justify-between text-xs font-semibold text-stone-500 mb-1">
                   <span>{item.day.slice(0, 3)}</span>
                   <span className="text-[10px] text-stone-400 font-mono">
-                    {item.prepTimeMinutes}m
+                    {item.prepTimeMinutes !== null ? `${item.prepTimeMinutes}m` : '—'}
                   </span>
                 </div>
                 <p
@@ -209,7 +209,7 @@ export function WeeklyMenuScreen({
                 <div className="flex items-center gap-3 text-xs text-stone-500 mb-2 font-mono flex-wrap">
                   <span className="flex items-center gap-1 font-semibold text-stone-700">
                     <Clock className="w-3.5 h-3.5 text-stone-500" />
-                    {selectedMeal.prepTimeMinutes} mins prep
+                    {selectedMeal.prepTimeMinutes !== null ? `${selectedMeal.prepTimeMinutes} mins prep` : 'Cooking time unavailable'}
                   </span>
                   <span>•</span>
                   <span className="flex items-center gap-1 font-semibold text-stone-700">
@@ -217,9 +217,15 @@ export function WeeklyMenuScreen({
                     Yield: {totalMultiplier.toFixed(2)}x portions
                   </span>
                   <span>•</span>
-                  <span className="text-emerald-700 font-semibold">
-                    Under {preferences.maxCookingTime}m target
-                  </span>
+                  {selectedMeal.prepTimeMinutes !== null ? (
+                    <span className="text-emerald-700 font-semibold">
+                      Under {preferences.maxCookingTime}m target
+                    </span>
+                  ) : (
+                    <span className="text-stone-500 font-semibold">
+                      Not checked against {preferences.maxCookingTime}m target
+                    </span>
+                  )}
                 </div>
 
                 <h2 className="font-editorial text-2xl sm:text-3xl font-bold text-[#1E3027] tracking-tight mb-2">
@@ -233,6 +239,24 @@ export function WeeklyMenuScreen({
                 <p className="text-sm text-stone-600 leading-relaxed mb-6">
                   {selectedMeal.description}
                 </p>
+
+                {selectedMeal.source === 'themealdb' && (
+                  <p className="text-[11px] text-stone-500 -mt-4 mb-6">
+                    Recipe data from{' '}
+                    <a href="https://www.themealdb.com" target="_blank" rel="noreferrer" className="underline hover:text-stone-800">
+                      TheMealDB
+                    </a>{' '}
+                    (used while Spoonacular is unavailable)
+                    {selectedMeal.sourceUrl && (
+                      <>
+                        {' • '}
+                        <a href={selectedMeal.sourceUrl} target="_blank" rel="noreferrer" className="underline hover:text-stone-800">
+                          Original recipe
+                        </a>
+                      </>
+                    )}
+                  </p>
+                )}
 
                 {/* Calories per person (sample values) */}
                 {selectedMember && (
@@ -412,7 +436,7 @@ export function WeeklyMenuScreen({
                     {item.mealName}
                   </h4>
                   <p className="text-xs text-stone-500 mt-0.5">
-                    {item.cuisine} • {item.prepTimeMinutes} mins
+                    {item.cuisine}{item.prepTimeMinutes !== null ? ` • ${item.prepTimeMinutes} mins` : ''}
                   </p>
                 </div>
               </div>

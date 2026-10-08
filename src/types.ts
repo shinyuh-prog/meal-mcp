@@ -75,7 +75,9 @@ export interface MenuItem {
   mealName: string;
   subName: string;
   description: string;
-  prepTimeMinutes: number;
+  prepTimeMinutes: number | null;
+  source?: 'spoonacular' | 'themealdb' | 'demo';
+  sourceUrl?: string | null;
   cuisine: string;
   image: string;
   tags: string[];

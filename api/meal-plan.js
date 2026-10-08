@@ -8,6 +8,7 @@
 import { GoogleGenAI, Type } from '@google/genai';
 import {
   searchSpoonacularRecipes,
+  searchMealDbRecipes,
   sanitizeErrorMessage,
   getCuratedRecipes,
   getGeminiModel,
@@ -67,16 +68,35 @@ export default async function handler(req, res) {
 
   try {
     // 1. Gather candidate recipes from Spoonacular & curated catalog
+    //    If Spoonacular cannot serve the request, fall back to TheMealDB (labelled as such).
     const cuisineQuery = primaryCuisines.join(',');
-    const spoonCandidatesRes = await searchSpoonacularRecipes({
-      query: '',
-      cuisine: cuisineQuery,
-      number: 16,
-    });
+    let candidates = [];
+    let recipeSource = 'spoonacular';
+    let sourceNotice = null;
 
-    let candidates = spoonCandidatesRes.results || [];
-    const curated = getCuratedRecipes();
-    candidates = [...candidates, ...curated];
+    try {
+      const spoonCandidatesRes = await searchSpoonacularRecipes({
+        query: '',
+        cuisine: cuisineQuery,
+        number: 16,
+      });
+      if (spoonCandidatesRes.isDemo) recipeSource = 'curated';
+      candidates = [...(spoonCandidatesRes.results || []), ...getCuratedRecipes()];
+    } catch (spoonErr) {
+      const spoonReason = sanitizeErrorMessage(spoonErr);
+      console.warn('Spoonacular unavailable, trying TheMealDB:', spoonReason);
+      try {
+        const mealDbRes = await searchMealDbRecipes({ cuisines: primaryCuisines, number: 18 });
+        if (mealDbRes.results.length === 0) {
+          throw new Error('no recipes found for the selected cuisines');
+        }
+        candidates = mealDbRes.results;
+        recipeSource = 'themealdb';
+        sourceNotice = `Spoonacular unavailable (${spoonReason}). Recipes from TheMealDB.`;
+      } catch (mealDbErr) {
+        throw new Error(`Spoonacular: ${spoonReason}. TheMealDB fallback: ${sanitizeErrorMessage(mealDbErr)}`);
+      }
+    }
 
     // Deduplicate by ID
     const candidateMap = new Map();
@@ -117,7 +137,12 @@ export default async function handler(req, res) {
       return true;
     });
 
-    const activePool = safeCandidates.length >= 7 ? safeCandidates : uniqueCandidates;
+    // Never widen the pool to recipes that failed the restriction checks
+    if (safeCandidates.length === 0) {
+      throw new Error('No retrieved recipes satisfy the saved restrictions and cooking time');
+    }
+    const activePool = safeCandidates;
+    const poolMap = new Map(activePool.map((c) => [String(c.id), c]));
     const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
     // 2. Check if GEMINI_API_KEY is configured
@@ -136,6 +161,8 @@ export default async function handler(req, res) {
         success: true,
         isDemo: true,
         message: 'GEMINI_API_KEY not configured. Used structured local constraint planner.',
+        recipeSource,
+        notice: sourceNotice,
         menu,
       });
     }
@@ -243,7 +270,7 @@ RULES:
       }
 
       const assignment = parsedAssignments.find((a) => a.day === dayName);
-      let selectedRecipe = assignment ? candidateMap.get(String(assignment.recipeId)) : null;
+      let selectedRecipe = assignment ? poolMap.get(String(assignment.recipeId)) : null;
 
       // Fallback if recipeId was invalid or hallucinated
       if (!selectedRecipe) {
@@ -255,8 +282,10 @@ RULES:
 
     return res.status(200).json({
       success: true,
-      isDemo: false,
+      isDemo: recipeSource === 'curated',
       modelUsed,
+      recipeSource,
+      notice: sourceNotice,
       menu: assembledMenu,
     });
   } catch (error) {
@@ -292,20 +321,27 @@ RULES:
 }
 
 function formatMenuItemFromRecipe(recipe, day, subName) {
+  // TheMealDB supplies a free-text measure (e.g. "1/2 cup") and no cooking time
   const ingredients = (recipe.extendedIngredients || []).map((ing) => ({
     name: ing.name || ing.original || 'Ingredient',
-    qty: `${ing.amount || 1}${ing.unit ? ' ' + ing.unit : ''}`,
+    qty: ing.measure !== undefined
+      ? (ing.measure || 'Quantity unavailable')
+      : `${ing.amount || 1}${ing.unit ? ' ' + ing.unit : ''}`,
     status: (ing.name || '').match(/rice|oil|salt|soy|cornstarch/i) ? 'in-pantry' : 'buy',
   }));
+  const timeKnown = recipe.readyInMinutes !== null;
+  const source = recipe.source || (String(recipe.id).startsWith('curated-') ? 'demo' : 'spoonacular');
 
   return {
     id: `menu-${day.toLowerCase().slice(0, 3)}`,
     recipeId: String(recipe.id),
     day,
     mealName: recipe.title,
-    subName: subName || `Prep time: ${recipe.readyInMinutes}m • Fresh Family Style`,
-    description: recipe.instructions || 'Nourishing family style meal prepared with fresh seasonal ingredients.',
-    prepTimeMinutes: recipe.readyInMinutes || 30,
+    subName: subName || (timeKnown ? `Prep time: ${recipe.readyInMinutes}m • Fresh Family Style` : 'Fresh Family Style'),
+    description: recipe.summary || recipe.instructions || 'Nourishing family style meal prepared with fresh seasonal ingredients.',
+    prepTimeMinutes: timeKnown ? (recipe.readyInMinutes || 30) : null,
+    source,
+    sourceUrl: recipe.sourceUrl || null,
     cuisine: (recipe.cuisines?.[0] || 'Asian') + ' Home Cooking',
     image: recipe.image || 'https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&w=600&q=80',
     tags: ['Family Balance', 'Portion Calibrated'],
