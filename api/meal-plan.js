@@ -419,7 +419,7 @@ async function applyGeminiEstimates(ai, model, menu, freshDays) {
           },
         },
       },
-      required: ['day'],
+      required: ['day', 'caloriesPerServing', 'proteinGrams', 'carbsGrams', 'fatGrams', 'weights'],
     },
   };
 
@@ -435,6 +435,7 @@ async function applyGeminiEstimates(ai, model, menu, freshDays) {
         config: {
           systemInstruction: `You estimate nutrition for home-cooked dinners.
 For each dinner, estimate caloriesPerServing, proteinGrams, carbsGrams and fatGrams for ONE serving, using the listed ingredients and the given number of servings.
+Always give all four nutrition numbers together; carbsGrams and fatGrams are as important as protein.
 In "weights", include ONLY ingredients whose needsGrams is true, with the weight in grams of the stated quantity of that ingredient (for example 1 cup of uncooked rice is about 185 g).
 Use null when you cannot make a reasonable estimate. Return one object per dinner, keyed by the same "day".`,
           responseMimeType: 'application/json',
