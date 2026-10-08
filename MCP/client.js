@@ -24,13 +24,15 @@ const MAX_TOOL_PAGES = 5;
  * separately from the status the upstream returned (`upstreamHttpStatus`).
  */
 export class McpError extends Error {
-  constructor(code, message, { httpStatus = 502, upstreamHttpStatus = null, stage = null } = {}) {
+  constructor(code, message, { httpStatus = 502, upstreamHttpStatus = null, stage = null, detail = null } = {}) {
     super(message);
     this.name = 'McpError';
     this.code = code;
     this.httpStatus = httpStatus;
     this.upstreamHttpStatus = upstreamHttpStatus;
     this.stage = stage;
+    // Sanitised upstream error text, for server-side diagnostics only
+    this.detail = detail;
   }
 }
 
@@ -170,12 +172,15 @@ export class McpSession {
 
       // Check response.ok before trusting the body; failed bodies may be empty or non-JSON.
       if (!response.ok) {
-        await response.text().catch(() => '');
+        const errorBody = await response.text().catch(() => '');
+        const detail = sanitizeErrorMessage(
+          `${response.headers.get('www-authenticate') || ''} ${errorBody}`.replace(/s+/g, ' ').trim()
+        ).slice(0, 400);
         if (response.status === 401 || response.status === 403) {
           throw new McpError(
             'UPSTREAM_AUTH',
             `NutriBalance MCP rejected the credential (HTTP ${response.status}). Check SMITHERY_API_KEY.`,
-            { httpStatus: 502, upstreamHttpStatus: response.status, stage }
+            { httpStatus: 502, upstreamHttpStatus: response.status, stage, detail }
           );
         }
         // The Smithery gateway answers 404 for a bad token as well as for an unknown namespace.

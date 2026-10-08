@@ -9,6 +9,7 @@ import { McpSession, McpError, requireMcpConfig } from '../MCP/client.js';
 
 const STEPS = {
   tools: null,
+  status: { tool: 'get_toolbox_status', args: () => ({}) },
   cuisines: { tool: 'cuisines_explore', args: () => ({ minRecipes: 1 }) },
   list: { tool: 'recipes_list_by_cuisine', args: (q) => ({ cuisine: q.cuisine, limit: 3 }) },
   search: { tool: 'recipes_search', args: (q) => ({ query: q.query, mealType: 'dinner', limit: 3 }) },
@@ -74,7 +75,7 @@ export default async function handler(req, res) {
     return send(200, { tool: matches[0].name, outputSchema: matches[0].outputSchema || null, result });
   } catch (err) {
     if (err instanceof McpError) {
-      return send(err.httpStatus, { error: err.message, code: err.code, stage: err.stage });
+      return send(err.httpStatus, { error: err.message, code: err.code, stage: err.stage, detail: err.detail });
     }
     return send(500, { error: 'Unexpected error.' });
   }
