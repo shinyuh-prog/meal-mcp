@@ -8,9 +8,13 @@
  * They are re-checked against live `tools/list` on every call, so a renamed
  * tool or changed schema fails loudly instead of sending guessed arguments.
  *
- * The RESULT format of calculate_tdee is not published and has not been
- * observed live yet. mapToolResult() accepts structured or text output and
- * returns an upstream-result error when no calorie figure can be read.
+ * The RESULT format of calculate_tdee is not published. Observed live, it is a
+ * single markdown text block with table rows such as
+ *   | TDEE (maintenance) | 2015.4 kcal/day |
+ *   | **Target calories (Muscle gain)** | **2365.4 kcal/day** |
+ *   | Protein | **120g** | 480 kcal |
+ * mapToolResult() reads that, also accepts structured output, and returns an
+ * upstream-result error when no calorie figure can be read.
  */
 
 import { McpSession, McpError, requireMcpConfig, readMcpConfig, MCP_DEFAULT_TIMEOUT_MS } from './client.js';
@@ -201,7 +205,7 @@ export function mapToolResult(result, toolName) {
     }
   } else if (text) {
     dailyCalories = pickFromText(text, [
-      /(?:target|daily|goal|recommended)[^\n\d]{0,40}calories?[^\n\d]{0,20}([\d,]+(?:\.\d+)?)/i,
+      /(?:target|daily|goal|recommended)[^\n\d]{0,40}calories?[^\n\d]{0,60}([\d,]+(?:\.\d+)?)/i,
       /calories?[^\n\d]{0,10}(?:target|goal)[^\n\d]{0,20}([\d,]+(?:\.\d+)?)/i,
     ]);
     calorieBasis = dailyCalories !== null ? 'target' : null;
