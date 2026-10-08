@@ -173,9 +173,9 @@ export class McpSession {
       // Check response.ok before trusting the body; failed bodies may be empty or non-JSON.
       if (!response.ok) {
         const errorBody = await response.text().catch(() => '');
-        const detail = sanitizeErrorMessage(
+        const detail = (sanitizeErrorMessage(
           `${response.headers.get('www-authenticate') || ''} ${errorBody}`.replace(/s+/g, ' ').trim()
-        ).slice(0, 400);
+        ) || '').slice(0, 400);
         if (response.status === 401 || response.status === 403) {
           throw new McpError(
             'UPSTREAM_AUTH',
