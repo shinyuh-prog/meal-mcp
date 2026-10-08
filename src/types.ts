@@ -86,7 +86,14 @@ export interface MenuItem {
   tags: string[];
   servings: number;
   isLocked?: boolean;
-  ingredients: { name: string; qty: string; originalQty?: string; status: 'in-pantry' | 'buy' }[];
+  nutritionEstimate?: {
+    caloriesPerServing: number;
+    proteinGrams: number | null;
+    carbsGrams: number | null;
+    fatGrams: number | null;
+    servingsBasis: number;
+  };
+  ingredients: { name: string; qty: string; originalQty?: string; qtyIsEstimate?: boolean; status: 'in-pantry' | 'buy' }[];
 }
 
 export interface ApiProviderHealth {

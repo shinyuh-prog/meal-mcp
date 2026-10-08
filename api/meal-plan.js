@@ -267,6 +267,7 @@ RULES:
     }
 
     // Validate that recipe IDs exist and assemble final menu
+    const freshDays = new Set();
     const assembledMenu = daysOfWeek.map((dayName, idx) => {
       // Check if locked
       if (lockedDays.includes(dayName) && swapDay !== dayName) {
@@ -282,13 +283,18 @@ RULES:
         selectedRecipe = activePool[idx % activePool.length];
       }
 
+      freshDays.add(dayName);
       return formatMenuItemFromRecipe(selectedRecipe, dayName, assignment?.subName, assignment);
     });
+
+    // Second pass (non-fatal): AI estimates for nutrition and for solids measured by volume
+    const estimatesApplied = await applyGeminiEstimates(ai, modelUsed, assembledMenu, freshDays);
 
     return res.status(200).json({
       success: true,
       isDemo: recipeSource === 'curated',
       modelUsed,
+      estimatesApplied,
       recipeSource,
       notice: sourceNotice,
       menu: assembledMenu,
@@ -363,6 +369,120 @@ function formatMenuItemFromRecipe(recipe, day, subName, assignment = null) {
     servings: 2.75,
     ingredients,
   };
+}
+
+// Quantities given by volume that lib/units.js leaves unconverted (i.e. solids)
+const VOLUME_QTY = /^\s*[\d/. ]+\s*(cups?|tbsps?|tbs|tblsp|tablespoons?|tsps?|teaspoons?)\b/i;
+const ESTIMATE_TIMEOUT_MS = 9000;
+
+/**
+ * Ask Gemini to estimate per-serving nutrition for the newly planned dinners and
+ * gram weights for solid ingredients measured by volume. Mutates the menu items
+ * in place and marks every value as an estimate. Any failure leaves the menu as is.
+ */
+async function applyGeminiEstimates(ai, model, menu, freshDays) {
+  const targets = menu.filter((item) => freshDays.has(item.day) && Array.isArray(item.ingredients));
+  if (targets.length === 0) return false;
+
+  const payload = targets.map((item) => ({
+    day: item.day,
+    mealName: item.mealName,
+    servings: item.recipeServings || 4,
+    ingredients: item.ingredients.map((ing, index) => ({
+      index,
+      name: ing.name,
+      qty: ing.qty,
+      needsGrams: VOLUME_QTY.test(String(ing.qty || '')),
+    })),
+  }));
+
+  const intField = (description) => ({ type: Type.INTEGER, nullable: true, description });
+  const responseSchema = {
+    type: Type.ARRAY,
+    items: {
+      type: Type.OBJECT,
+      properties: {
+        day: { type: Type.STRING },
+        caloriesPerServing: intField('Estimated kcal for one serving'),
+        proteinGrams: intField('Estimated protein per serving'),
+        carbsGrams: intField('Estimated carbohydrate per serving'),
+        fatGrams: intField('Estimated fat per serving'),
+        weights: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              index: { type: Type.INTEGER, description: 'Ingredient index from the request' },
+              grams: { type: Type.INTEGER, description: 'Estimated weight in grams of the stated quantity' },
+            },
+            required: ['index', 'grams'],
+          },
+        },
+      },
+      required: ['day'],
+    },
+  };
+
+  let timer = null;
+  try {
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('estimate timed out')), ESTIMATE_TIMEOUT_MS);
+    });
+    const response = await Promise.race([
+      ai.models.generateContent({
+        model,
+        contents: `Estimate for each dinner:\n${JSON.stringify(payload)}`,
+        config: {
+          systemInstruction: `You estimate nutrition for home-cooked dinners.
+For each dinner, estimate caloriesPerServing, proteinGrams, carbsGrams and fatGrams for ONE serving, using the listed ingredients and the given number of servings.
+In "weights", include ONLY ingredients whose needsGrams is true, with the weight in grams of the stated quantity of that ingredient (for example 1 cup of uncooked rice is about 185 g).
+Use null when you cannot make a reasonable estimate. Return one object per dinner, keyed by the same "day".`,
+          responseMimeType: 'application/json',
+          responseSchema,
+        },
+      }),
+      timeout,
+    ]);
+
+    const parsed = JSON.parse(response.text ? response.text.trim() : '[]');
+    if (!Array.isArray(parsed)) return false;
+
+    const inRange = (n, min, max) => Number.isInteger(n) && n >= min && n <= max;
+    let applied = false;
+
+    for (const item of targets) {
+      const est = parsed.find((entry) => entry && entry.day === item.day);
+      if (!est) continue;
+
+      if (inRange(est.caloriesPerServing, 50, 2000)) {
+        const macro = (n) => (inRange(n, 0, 300) ? n : null);
+        item.nutritionEstimate = {
+          caloriesPerServing: est.caloriesPerServing,
+          proteinGrams: macro(est.proteinGrams),
+          carbsGrams: macro(est.carbsGrams),
+          fatGrams: macro(est.fatGrams),
+          servingsBasis: payload.find((p) => p.day === item.day).servings,
+        };
+        applied = true;
+      }
+
+      for (const weight of Array.isArray(est.weights) ? est.weights : []) {
+        const ing = item.ingredients[weight.index];
+        if (!ing || !VOLUME_QTY.test(String(ing.qty || '')) || !inRange(weight.grams, 1, 2000)) continue;
+        ing.originalQty = ing.originalQty || ing.qty;
+        ing.qty = `${weight.grams}g`;
+        ing.qtyIsEstimate = true;
+        applied = true;
+      }
+    }
+
+    return applied;
+  } catch (err) {
+    console.warn('Gemini estimates skipped:', sanitizeErrorMessage(err));
+    return false;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 function buildDeterministicMenu({ candidates, existingMenu = [], lockedDays = [], swapDay = null, cookingTimePreferences = 45 }) {

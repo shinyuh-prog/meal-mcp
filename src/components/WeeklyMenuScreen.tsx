@@ -53,9 +53,15 @@ export function WeeklyMenuScreen({
   const selectedMember =
     preferences.members.find((m) => m.id === selectedMemberId) || preferences.members[0];
   const memberPortion = selectedMember ? getMemberPortion(selectedMember) : 1;
+  // Prefer the AI estimate for this recipe; older or demo meals fall back to the sample value
+  const nutritionEstimate = selectedMeal?.nutritionEstimate || null;
   const memberDinnerCalories = selectedMeal
-    ? Math.round(getSampleDinnerCalories(selectedMeal) * memberPortion)
+    ? Math.round(
+        (nutritionEstimate ? nutritionEstimate.caloriesPerServing : getSampleDinnerCalories(selectedMeal)) * memberPortion
+      )
     : 0;
+  const memberMacro = (grams: number | null) =>
+    grams !== null ? `${Math.round(grams * memberPortion)} g` : 'Unavailable';
   const memberDailyTarget = selectedMember ? getDailyCalorieTarget(selectedMember) : 0;
 
   const lockedCount = menuItems.filter((m) => m.isLocked).length;
@@ -311,6 +317,12 @@ export function WeeklyMenuScreen({
                         <p className="text-lg font-bold text-stone-900 font-mono">
                           ~{memberDinnerCalories.toLocaleString()} kcal
                         </p>
+                        {nutritionEstimate && (
+                          <p className="text-[11px] text-stone-500 font-mono mt-0.5">
+                            Protein {memberMacro(nutritionEstimate.proteinGrams)} • Carbs{' '}
+                            {memberMacro(nutritionEstimate.carbsGrams)} • Fat {memberMacro(nutritionEstimate.fatGrams)}
+                          </p>
+                        )}
                       </div>
                       <div className="p-2.5 bg-white border border-stone-200/70 rounded-lg">
                         <p className="text-[11px] font-medium text-stone-500">
@@ -323,7 +335,10 @@ export function WeeklyMenuScreen({
                     </div>
 
                     <p className="text-[11px] text-stone-400 mt-2">
-                      Sample estimate for this dinner only. It is one meal and is not meant to cover the full daily target.
+                      {nutritionEstimate
+                        ? `AI estimate (Gemini) from the ingredient list, assuming the recipe serves ${nutritionEstimate.servingsBasis}. Not measured nutrition data.`
+                        : 'Sample estimate.'}{' '}
+                      This is one dinner only and is not meant to cover the full daily target.
                     </p>
                   </div>
                 )}
@@ -349,8 +364,13 @@ export function WeeklyMenuScreen({
                         <div className="flex items-center gap-2">
                           <span
                             className="font-mono text-stone-600 font-medium"
-                            title={ing.originalQty ? `Recipe states: ${ing.originalQty}` : undefined}
+                            title={
+                              ing.originalQty
+                                ? `${ing.qtyIsEstimate ? 'AI-estimated weight. ' : ''}Recipe states: ${ing.originalQty}`
+                                : undefined
+                            }
                           >
+                            {ing.qtyIsEstimate ? '~' : ''}
                             {ing.qty}
                           </span>
                           {ing.status === 'in-pantry' ? (
